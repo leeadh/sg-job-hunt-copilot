@@ -1,0 +1,13 @@
+---
+description: Security rules to prevent accidental key leaks
+alwaysApply: true
+---
+
+# Security Rules
+
+- **Never** hardcode API keys, tokens, or secrets in source files.
+- API keys must come from `process.env` on the server side only.
+- Never prefix env variables with `NEXT_PUBLIC_` if they contain secrets.
+- Never log or return API key values in API responses (even partially).
+- Always validate and sanitize user input before passing to LLM prompts.
+- Always run `filterLLMOutput()` on Gemini responses before returning to client.

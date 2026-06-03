@@ -1,0 +1,27 @@
+---
+description: Testing conventions for the project
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# Testing Conventions
+
+- Use **Vitest** for all tests. Do not use Jest.
+- Place tests next to source: `src/lib/__tests__/foo.test.ts`
+- Run tests with `npm test` before suggesting a task is complete.
+- Mock external APIs (Gemini, MyCareersFuture) — never make real API calls in tests.
+- Test edge cases: empty input, max-length input, injection patterns, rate limit boundaries.
+- When modifying `src/lib/*.ts`, add or update tests for the changed logic.
+
+```typescript
+// Example test structure
+import { describe, it, expect } from "vitest";
+import { checkRateLimit } from "../rate-limit";
+
+describe("checkRateLimit", () => {
+  it("allows first request", () => {
+    const result = checkRateLimit("127.0.0.1", "own_key");
+    expect(result.allowed).toBe(true);
+  });
+});
+```

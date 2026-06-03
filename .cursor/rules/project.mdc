@@ -1,0 +1,16 @@
+---
+description: Project conventions for SG Job Hunt Copilot
+alwaysApply: true
+---
+
+# Project Conventions
+
+- **Framework**: Next.js 16 with App Router, TypeScript, Tailwind CSS
+- **AI Model**: Gemini 2.5 Flash-Lite via `@google/genai`
+- **API key**: Server-side only via `process.env.GEMINI_API_KEY`, with optional BYOK from form
+- **Rate limiting**: Tiered — `shared_key` (5/5min) vs `own_key` (5/min)
+- **Data files**: `src/data/` for static SG-specific data (salary benchmarks, programmes)
+- **Lib files**: `src/lib/` for pure logic (no React, no Next.js imports)
+- **Deploy**: `vercel --prod` — env vars set via Vercel dashboard
+- All Gemini calls must use `sanitizeForPrompt()`, `withTimeout()`, and `SAFETY_SETTINGS`
+- All LLM output must pass through `filterLLMOutput()` before reaching the client

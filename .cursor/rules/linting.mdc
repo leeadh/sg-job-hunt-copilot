@@ -1,0 +1,14 @@
+---
+description: Linting standards — fix lint errors after edits
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# Linting
+
+- After editing `.ts` or `.tsx` files, check for lint errors with `ReadLints` tool.
+- Fix any lint errors you introduced. Do not leave red squiggles.
+- Do not fix pre-existing lint warnings unless they block the current task.
+- Do not disable ESLint rules with `eslint-disable` comments unless absolutely necessary.
+- Prefer fixing the root cause over suppressing the warning.
+- Run `npm run lint` before suggesting work is complete.

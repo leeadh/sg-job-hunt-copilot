@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": ".cursor/hooks/block-dangerous.sh",
+        "failClosed": false
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": ".cursor/hooks/lint-after-edit.sh",
+        "matcher": "Write"
+      }
+    ],
+    "stop": [
+      {
+        "command": ".cursor/hooks/auto-commit.sh",
+        "loop_limit": 1
+      }
+    ]
+  }
+}
