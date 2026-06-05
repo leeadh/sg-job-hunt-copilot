@@ -112,7 +112,17 @@ Structure your response in exactly these sections:
 - The revised resume must be defensible in an interview — if the candidate cannot back up a claim, do not write it
 - Add missing keywords from the JD naturally (don't keyword-stuff)
 - Keep the same structure/sections but make every line stronger
-- Use standard resume format: Name, Contact, Summary, Experience (reverse-chronological), Education, Skills
+
+STRICT FORMAT for the Revised Resume section (follow exactly):
+- Line 1: Full name (plain text, no formatting)
+- Line 2: Professional title/tagline
+- Line 3: Contact info separated by " | " (e.g. "email@example.com | +65 1234 5678 | Singapore | linkedin.com/in/name")
+- Then use "### SECTION NAME" for each section header (e.g. ### SUMMARY, ### EXPERIENCE, ### EDUCATION, ### SKILLS, ### CERTIFICATIONS, ### LANGUAGES)
+- Under ### EXPERIENCE, each role must be formatted as: "**Role Title** | Company Name | Start - End" on one line, followed by bullet points starting with "- "
+- Under ### EDUCATION, each entry: "**Degree** | Institution | Year" on one line, optionally followed by "- " details
+- Under ### SKILLS, group by category: "**Category Name:** skill1, skill2, skill3" on one line per category
+- Under ### CERTIFICATIONS, one per line: "- Certification Name | Issuer | Date"
+- Under ### LANGUAGES, comma-separated on one line
 
 ### Section 4: "## Next Steps" (max 3 bullet points)
 - 2-3 concrete actions beyond the resume itself (networking, programmes to apply for, etc.)

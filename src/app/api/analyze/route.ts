@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeResume, extractKeywords } from "@/lib/ats-analyzer";
 import { getSalaryPercentile } from "@/data/salary-benchmarks";
 import { matchProgrammes, UserProfile } from "@/data/government-programmes";
-import { analyzeWithGemini, suggestJobTitles, generateInterviewPrep, generateLinkedInOptimizer, generateStructuredResume } from "@/lib/gemini";
+import { analyzeWithGemini, suggestJobTitles, generateInterviewPrep, generateLinkedInOptimizer } from "@/lib/gemini";
+import { parseRevisedResume } from "@/lib/resume-parser";
 import { searchJobs } from "@/lib/job-search";
 import { validateInputs } from "@/lib/sanitize";
 import { filterLLMOutput } from "@/lib/output-filter";
@@ -129,10 +130,8 @@ export async function POST(req: NextRequest) {
         linkedIn = results[2] as { headline: string; summary: string } | null;
         interviewPrep = (results[3] as string) || null;
 
-        // Extract the revised resume from the analysis, then convert to structured JSON
-        const revisedMatch = llmAnalysis.match(/## Revised Resume\s*\n([\s\S]*?)(?=\n## (?!.*Resume)|$)/);
-        const revisedText = revisedMatch ? revisedMatch[1].trim() : resumeText;
-        structuredResume = await generateStructuredResume({ apiKey: effectiveKey, resumeText: revisedText, jobDescription });
+        // Parse the revised resume locally — no extra Gemini call needed
+        structuredResume = parseRevisedResume(llmAnalysis);
 
         const searchQueries = suggestedTitles.length > 0
           ? suggestedTitles
