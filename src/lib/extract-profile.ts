@@ -51,17 +51,50 @@ const GRADUATION_AGE: Record<string, number> = {
 
 function extractYearsExperience(text: string): number | undefined {
   const currentYear = new Date().getFullYear();
-  const yearPattern = /\b(20\d{2}|19\d{2})\b/g;
-  const years: number[] = [];
-  let match;
-  while ((match = yearPattern.exec(text)) !== null) {
-    const y = parseInt(match[1]);
-    if (y >= 1980 && y <= currentYear) years.push(y);
-  }
-  if (years.length < 2) return undefined;
 
-  const earliest = Math.min(...years);
-  const latest = Math.max(...years);
+  // Split text into lines for context-aware extraction
+  const lines = text.split(/\n/);
+
+  // Education-related keywords — date ranges near these are excluded
+  const educationPattern = /university|polytechnic|college|school|institute|bachelor|master|msc|mba|diploma|degree|gpa|graduated|honours|cum laude|education/i;
+
+  const dateRangePattern = /\b(20\d{2}|19\d{2})\s*[-–]\s*(20\d{2}|19\d{2}|[Pp]resent|[Cc]urrent|[Nn]ow|[Oo]ngoing)\b/g;
+  const spans: [number, number][] = [];
+
+  for (const line of lines) {
+    // Skip lines that look like education entries
+    if (educationPattern.test(line)) continue;
+
+    let match;
+    dateRangePattern.lastIndex = 0;
+    while ((match = dateRangePattern.exec(line)) !== null) {
+      const start = parseInt(match[1]);
+      const endStr = match[2];
+      const end = /\d{4}/.test(endStr) ? parseInt(endStr) : currentYear;
+
+      if (start >= 1980 && start <= currentYear && end >= start && end <= currentYear) {
+        spans.push([start, end]);
+      }
+    }
+  }
+
+  if (spans.length === 0) return undefined;
+
+  // Merge overlapping spans
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [spans[0]];
+  for (let i = 1; i < spans.length; i++) {
+    const prev = merged[merged.length - 1];
+    if (spans[i][0] <= prev[1]) {
+      prev[1] = Math.max(prev[1], spans[i][1]);
+    } else {
+      merged.push(spans[i]);
+    }
+  }
+
+  // Use span from earliest work start to latest work end
+  const earliest = merged[0][0];
+  const latest = merged[merged.length - 1][1];
 
   if (latest >= currentYear - 1 && latest - earliest >= 1) {
     return latest - earliest;
@@ -72,7 +105,7 @@ function extractYearsExperience(text: string): number | undefined {
 function extractAge(text: string, degree?: string): number | undefined {
   const currentYear = new Date().getFullYear();
 
-  // 1) Explicit DOB or age statement
+  // Strategy 1: Explicit DOB or age statement (most reliable)
   const dobPatterns = [
     /\b(?:d\.?o\.?b\.?|date of birth|born)[:\s]*(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})\b/i,
     /\b(?:d\.?o\.?b\.?|date of birth|born)[:\s]*\w+\s+\d{1,2},?\s+(\d{4})\b/i,
@@ -94,7 +127,7 @@ function extractAge(text: string, degree?: string): number | undefined {
     }
   }
 
-  // 2) Estimate from graduation year + degree type
+  // Strategy 2: Estimate from graduation year + degree type (reasonably reliable)
   const gradPatterns = [
     /\b(?:graduated?|class of|batch of|cohort)\s*:?\s*(20\d{2}|19\d{2})\b/i,
     /(?:bachelor|bsc|b\.?a\.?|diploma|master|msc|mba|b\.?eng)[\s\S]{0,80}?(20\d{2}|19\d{2})\b/i,
@@ -113,20 +146,8 @@ function extractAge(text: string, degree?: string): number | undefined {
     }
   }
 
-  // 3) Estimate from earliest work year (assume started working at ~22-24)
-  const workYearPattern = /\b(20\d{2}|19\d{2})\b/g;
-  const workYears: number[] = [];
-  let wm;
-  while ((wm = workYearPattern.exec(text)) !== null) {
-    const y = parseInt(wm[1]);
-    if (y >= 1980 && y <= currentYear) workYears.push(y);
-  }
-  if (workYears.length >= 2) {
-    const earliestWork = Math.min(...workYears);
-    const startAge = degree === "Diploma" ? 20 : 23;
-    const estimated = currentYear - earliestWork + startAge;
-    if (estimated >= 18 && estimated <= 80) return estimated;
-  }
+  // Strategy 3 removed: estimating from earliest work year is too unreliable
+  // (picks up education years, certification dates, etc.)
 
   return undefined;
 }

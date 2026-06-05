@@ -1,0 +1,39 @@
+---
+description: data.gov.sg API integration patterns and live data strategy
+globs: src/lib/salary-api.ts, src/data/salary-benchmarks.ts, src/app/api/analyze/route.ts
+alwaysApply: false
+---
+
+# data.gov.sg Integration
+
+## Architecture
+
+Live API → 24h in-memory cache → static fallback. Never fail the user if the API is down.
+
+## API Pattern
+
+- Base: `https://data.gov.sg/api/action/datastore_search`
+- No auth required. Use `resource_id`, `q` (search), `sort`, `limit` params.
+- URL-encode filters; use `sort=year+desc` to get latest data first.
+- Timeout: 5s via `AbortController`. Return empty on failure.
+
+## Key Resource IDs
+
+- GES (Graduate Employment Survey): `d_3c55210de27fcccda2ed0c63fdd2b352`
+
+## Rules
+
+1. Always deduplicate by `university|degree`, keep latest year only.
+2. Skip records where median/p25/p75 are `na`, `N.A.`, or `x`.
+3. Cache TTL = 24 hours. Cache key = `field|degree` lowercased.
+4. On API failure or empty results, fall back to `findSalaryBenchmark()` from static data.
+5. Pass pre-fetched benchmarks to `analyzeWithGemini()` — never fetch inside the LLM call.
+6. Expose `source: "live" | "static"` so the frontend can show data provenance.
+
+## Adding New Datasets
+
+To integrate a new data.gov.sg dataset:
+1. Find the `resource_id` at https://data.gov.sg
+2. Add a new fetch function in `salary-api.ts` following the `fetchGES` pattern
+3. Add corresponding static fallback data in `src/data/`
+4. Wire into `route.ts` with `fetchXxxWithFallback()` → pass to Gemini

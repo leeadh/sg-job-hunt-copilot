@@ -19,8 +19,8 @@ export interface RateLimitResult {
 }
 
 const LIMITS = {
-  own_key:    { maxRequests: 5,  windowMs: 60_000 },
-  shared_key: { maxRequests: 5, windowMs: 300_000 },
+  own_key:    { maxRequests: 20, windowMs: 60_000 },
+  shared_key: { maxRequests: 20, windowMs: 60_000 },
 } as const;
 
 export function checkRateLimit(ip: string, mode: "own_key" | "shared_key" = "own_key"): RateLimitResult {

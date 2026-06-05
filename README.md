@@ -6,7 +6,7 @@ Free AI-powered resume analysis tool built specifically for Singapore jobseekers
 
 Singapore's job market is brutal. Fresh grads send 400+ applications and get ghosted. 60% of workers say job hunting got harder this year. The common advice — "just paste your resume into ChatGPT" — misses the actual gaps:
 
-- **Salary expectations are off** → LLMs hallucinate Singapore salary data
+- **Salary expectations are off** → LLMs hallucinate Singapore salary data (we pull live data from data.gov.sg)
 - **Missing keywords** → generic AI reviews don't simulate real ATS parsing
 - **Government support exists** → but nobody knows about WSG, TeSA, CCP, SFJS
 - **Advice is generic** → ChatGPT doesn't know if you qualify for Mid-Career Subsidy at 42 or SFJS if retrenched
@@ -16,13 +16,13 @@ Singapore's job market is brutal. Fresh grads send 400+ applications and get gho
 
 | Feature | How it works | Why an LLM can't |
 |---|---|---|
-| **AI Resume Rewrite** | Gemini 2.5 Flash-Lite rewrites your full resume with Singapore context baked in | Uses real MOM salary data + programme eligibility in its prompt, not hallucinations |
+| **AI Resume Rewrite** | Gemini 2.5 Flash-Lite rewrites your full resume with Singapore context baked in | Uses live GES salary data from data.gov.sg + programme eligibility in its prompt, not hallucinations |
 | **Interview Prep** | Generates 5-10 interview questions tailored to your resume gaps vs the JD | Questions target your specific weaknesses — e.g. "You lack AWS experience but the JD requires it" |
 | **LinkedIn Optimizer** | Generates a recruiter-optimized LinkedIn headline + summary from your resume | Knows SG recruiter search patterns and your actual skill stack |
 | **Live Job Matching** | Gemini suggests job titles → searches MyCareersFuture API → shows real listings with salaries | Real-time API search with AI-suggested queries, not training data |
 | **Auto Profile Extraction** | Uploads your resume and auto-fills age, experience, field, qualification, and employment status | Infers from graduation year, work history dates, and degree type |
 | **ATS Keyword Match** | Extracts skills from your resume and the JD, shows match score with specific missing keywords | Real keyword extraction with n-gram matching, not LLM guessing |
-| **Salary Benchmarking** | Compares your expected salary against MOM Graduate Employment Survey data by field + degree | Uses actual published data with p25/median/p75 ranges |
+| **Salary Benchmarking** | Compares your expected salary against live Graduate Employment Survey data from data.gov.sg (with static fallback) | Uses actual published data with p25/median/p75 ranges — auto-updated from government source |
 | **Smart Programme Matching** | Checks your age, citizenship, employment status, and income against real eligibility rules | Cross-references 9 programmes with specific criteria — shows only what you actually qualify for |
 | **Downloadable Revised Resume** | One-click PDF download of the AI-rewritten resume in A4 format | Professional formatting with proper sections, ready to send |
 | **PDF Resume Upload** | Drag-and-drop PDF parsing in the browser — no copy-paste needed | Client-side extraction, nothing leaves your browser |
@@ -47,7 +47,7 @@ Singapore's job market is brutal. Fresh grads send 400+ applications and get gho
 - [x] **ATS score ring** — animated SVG visualization with color-coded score (red/amber/green)
 - [x] **Matched vs missing keyword pills** — green for matched, red for missing from resume
 - [x] **Format issue detection** — checks for ATS-breaking characters, resume length, missing sections
-- [x] **MOM salary benchmarking** — 34 fields across Bachelor's and Diploma, with p25/median/p75
+- [x] **Live salary benchmarking** — live data from data.gov.sg GES API, with static fallback for 34 fields
 - [x] **Salary percentile visualizer** — shows where your expected salary sits on the distribution
 - [x] **Smart government programme matcher** — 9 programmes with real eligibility functions that check age, citizenship, employment status, income, and target role
 - [x] **Personalized programme reasons** — each matched programme shows *why* you qualify with specific numbers
@@ -97,7 +97,7 @@ Singapore's job market is brutal. Fresh grads send 400+ applications and get gho
 │              │    ├─ Tiered rate limiter               │  │
 │              │    ├─ Input validation + sanitization   │  │
 │              │    ├─ ATS keyword matcher               │  │
-│              │    ├─ Salary benchmarker                │  │
+│              │    ├─ Salary benchmarker (data.gov.sg)   │  │
 │              │    ├─ Programme eligibility checker     │  │
 │              │    ├─ Gemini AI analysis                │  │
 │              │    ├─ Gemini interview prep             │  │
@@ -219,7 +219,7 @@ src/
 │   ├── ResultsPanel.tsx           # Results: AI analysis, jobs, salary, ATS, programmes
 │   └── ScoreRing.tsx              # Animated ATS score ring (SVG)
 ├── data/
-│   ├── salary-benchmarks.ts       # MOM GES data — 34 fields, Bachelor's + Diploma
+│   ├── salary-benchmarks.ts       # Static fallback GES data — 34 fields, Bachelor's + Diploma
 │   └── government-programmes.ts   # 9 programmes with match() eligibility functions
 └── lib/
     ├── ats-analyzer.ts            # ATS keyword extraction engine (dictionary + n-grams)
@@ -229,6 +229,7 @@ src/
     ├── output-filter.ts           # LLM output safety filter (XSS, injection detection)
     ├── parse-pdf.ts               # Client-side PDF text extraction (pdfjs-dist)
     ├── rate-limit.ts              # Tiered rate limiter (shared key: 5/5min, own key: 5/min)
+    ├── salary-api.ts              # Live data.gov.sg GES client with 24h cache + static fallback
     └── sanitize.ts                # Input validation, length limits, prompt injection detection
 ```
 
@@ -236,7 +237,7 @@ src/
 
 | Data | Source | Update Frequency |
 |---|---|---|
-| Graduate salaries | MOM Graduate Employment Survey via NUS/NTU/SMU/SUTD/SIT | Annual (update when new GES published) |
+| Graduate salaries | **Live from data.gov.sg** GES API, with static fallback | Auto-updated (24h cache) |
 | Job listings | MyCareersFuture API (`api.mycareersfuture.gov.sg/v2/jobs`) | Real-time |
 | Government programmes | WSG, SSG, IMDA, CPF Board official pages | Manual (check quarterly) |
 
@@ -286,10 +287,53 @@ Programmes that don't match your profile are hidden entirely — no generic list
 - Resume text is sent to Google's Gemini API for analysis, then immediately discarded
 - Open source — audit the code yourself
 
+## Development Practices (Cursor)
+
+This project uses [Cursor](https://cursor.com) with custom rules and hooks to enforce quality guardrails during AI-assisted development.
+
+### Cursor Rules (`.cursor/rules/`)
+
+| Rule | Scope | What it enforces |
+|---|---|---|
+| **`project.mdc`** | Always | Framework, AI model, API key handling, deploy workflow, mandatory sanitize/filter calls |
+| **`security.mdc`** | Always | No hardcoded secrets, `process.env` only, no `NEXT_PUBLIC_` for keys, input/output filtering, never set env vars via interactive CLI (agent terminals save empty values) |
+| **`testing.mdc`** | `*.ts, *.tsx` | Vitest conventions, test placement, mock external APIs, edge case coverage |
+| **`linting.mdc`** | `*.ts, *.tsx` | Fix introduced lint errors, don't disable rules, run `npm run lint` before completing work |
+| **`data-gov-sg.mdc`** | `salary-api.ts`, `salary-benchmarks.ts`, `route.ts` | Live API → cache → fallback architecture, resource IDs, how to add new datasets |
+
+### Cursor Hooks (`.cursor/hooks.json`)
+
+Three event-driven hooks run automatically during agent sessions:
+
+| Hook | Event | What it does |
+|---|---|---|
+| **`block-dangerous.sh`** | `beforeShellExecution` | Blocks `git push --force`, `reset --hard`, `rm -rf /`, and interactive env var commands (`vercel env add`). Prompts user review for commands containing potential API keys. |
+| **`lint-after-edit.sh`** | `afterFileEdit` | Runs ESLint on any `.ts`/`.tsx` file after the agent edits it. Feeds lint errors back to the agent as context so they get fixed immediately. |
+| **`auto-commit.sh`** | `stop` | When the agent finishes a session, auto-commits all changes with a timestamped message — but only if ESLint passes. Skips commit and notifies on lint failures. |
+
+### Lessons Learned (Why These Exist)
+
+These rules and hooks weren't set up proactively — they were added after real incidents during development:
+
+| What went wrong | What was added |
+|---|---|
+| Agent stored the Gemini API key in client-side code (`NEXT_PUBLIC_`), exposable via DevTools | **Security rule**: never use `NEXT_PUBLIC_` for secrets |
+| Agent ran `vercel env add` in a non-interactive terminal, silently saving an empty value — app broke without errors | **Security rule** + **hook**: block interactive env var CLI commands, instruct user to use dashboard |
+| Agent used the wrong Unicode emoji (🇬🇸 South Georgia instead of 🇸🇬 Singapore) | Manual catch — a reminder that AI agents don't verify visual output |
+| Agent would have happily run `git push --force` or `reset --hard` | **Hook**: `block-dangerous.sh` denies destructive git commands |
+| Lint errors shipped without being noticed | **Hook**: `lint-after-edit.sh` runs ESLint after every edit and feeds errors back to the agent |
+| Forgetting to commit after a session of changes | **Hook**: `auto-commit.sh` auto-commits at session end (only if lint passes) |
+
+### Why This Matters
+
+- **Rules** act as persistent memory — every AI session starts with the right conventions instead of re-explaining project structure, security policies, or testing requirements.
+- **Hooks** enforce guardrails automatically — dangerous commands are blocked before execution, lint errors are caught during editing (not after), and clean work is committed without manual intervention.
+- **Together**, they let you move fast with AI assistance while preventing the common failure modes: leaked secrets, broken linting, force-pushed history, and forgotten commits.
+
 ## Contributing
 
 PRs welcome. The most impactful contributions:
-1. **Updated salary data** — when new GES is published
+1. **Salary data improvements** — salary data now auto-updates from data.gov.sg; static fallback can be improved
 2. **New government programmes** — add to `government-programmes.ts` with a `match()` function
 3. **Better ATS patterns** — improve keyword extraction in `ats-analyzer.ts`
 

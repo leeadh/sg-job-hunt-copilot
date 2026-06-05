@@ -1,6 +1,6 @@
-// MOM Graduate Employment Survey data (2024 cohort, latest available)
-// Source: https://stats.mom.gov.sg/
-// Also cross-referenced with NUS/NTU/SMU/SUTD/SIT graduate employment surveys
+// Static fallback data — used when data.gov.sg API is unavailable.
+// Primary source is now live API: src/lib/salary-api.ts
+// Last updated manually: 2024 cohort from NUS/NTU/SMU/SUTD/SIT GES
 
 export interface SalaryBenchmark {
   field: string;

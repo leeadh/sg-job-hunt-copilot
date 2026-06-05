@@ -1,9 +1,11 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { SALARY_BENCHMARKS, findSalaryBenchmark, getSalaryPercentile } from "@/data/salary-benchmarks";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } from "@google/genai";
+import { SalaryBenchmark, SALARY_BENCHMARKS, getSalaryPercentile } from "@/data/salary-benchmarks";
 import { matchProgrammes, UserProfile } from "@/data/government-programmes";
 import { sanitizeForPrompt } from "@/lib/sanitize";
+import { ResumeData } from "@/lib/resume-schema";
 
 const MODEL = "gemini-2.5-flash-lite";
+const FALLBACK_MODEL = "gemini-2.0-flash";
 const GEMINI_TIMEOUT_MS = 30_000;
 
 const SAFETY_SETTINGS = [
@@ -12,23 +14,37 @@ const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
 ];
 
-function buildSalaryContext(field?: string, degree?: string, expectedSalary?: number): string {
-  if (!field) return "";
-
-  const benchmarks = findSalaryBenchmark(field, degree);
+function buildSalaryContext(
+  benchmarks: SalaryBenchmark[],
+  expectedSalary?: number,
+  yearsExperience?: number
+): string {
   if (benchmarks.length === 0) return "";
 
-  const b = benchmarks[0];
-  let context = `\n## Singapore Salary Data (MOM Graduate Employment Survey 2024)\n`;
-  context += `Field: ${b.field} (${b.degree})\n`;
-  context += `- 25th percentile: S$${b.p25Salary.toLocaleString()}/month\n`;
-  context += `- Median: S$${b.medianSalary.toLocaleString()}/month\n`;
-  context += `- 75th percentile: S$${b.p75Salary.toLocaleString()}/month\n`;
-  context += `- Employment rate: ${b.employmentRate}%\n`;
-  context += `- Source: ${b.source}\n`;
+  const isMOMData = benchmarks[0]?.source.includes("MOM Occupational");
+  const heading = isMOMData
+    ? `\n## Singapore Salary Data (MOM Occupational Wage Survey 2024 — all experience levels)\n`
+    : `\n## Singapore Salary Data (Graduate Employment Survey — fresh graduates only)\n`;
 
-  if (expectedSalary) {
-    const percentile = getSalaryPercentile(expectedSalary, b);
+  let context = heading;
+
+  if (!isMOMData && (yearsExperience ?? 0) > 3) {
+    context += `\n⚠️ NOTE: This data covers FRESH GRADUATES only. The candidate has ${yearsExperience} years experience — actual market rates for their level are significantly higher. Treat these numbers as a floor reference, not a direct benchmark.\n`;
+  }
+
+  for (const b of benchmarks.slice(0, 5)) {
+    context += `\n### ${b.field} (${b.degree})\n`;
+    context += `- 25th percentile: S$${b.p25Salary.toLocaleString()}/month\n`;
+    context += `- Median: S$${b.medianSalary.toLocaleString()}/month\n`;
+    context += `- 75th percentile: S$${b.p75Salary.toLocaleString()}/month\n`;
+    if (b.employmentRate > 0) {
+      context += `- Employment rate: ${b.employmentRate}%\n`;
+    }
+    context += `- Source: ${b.source}\n`;
+  }
+
+  if (expectedSalary && benchmarks.length > 0) {
+    const percentile = getSalaryPercentile(expectedSalary, benchmarks[0]);
     context += `\nCandidate's expected salary: S$${expectedSalary.toLocaleString()}/month (${percentile})\n`;
   }
 
@@ -59,7 +75,11 @@ function buildAllFieldsReference(): string {
   return context;
 }
 
-const SYSTEM_PROMPT = `You are the SG Job Hunt Copilot — a career advisor built specifically for Singapore jobseekers.
+function getSystemPrompt(): string {
+  const today = new Date().toLocaleDateString("en-SG", { year: "numeric", month: "long", day: "numeric" });
+  return `You are the SG Job Hunt Copilot — a career advisor built specifically for Singapore jobseekers.
+
+Today's date: ${today}. Do NOT flag any dates in 2025 or 2026 as being "in the future."
 
 Your job is to give specific, actionable resume feedback. You are NOT a generic AI assistant. You have access to real Singapore data that you MUST reference when relevant.
 
@@ -87,7 +107,9 @@ Structure your response in exactly these sections:
 ### Section 3: "## Revised Resume" (this is the main section)
 - Output the FULL revised resume text that the candidate can copy-paste and use immediately
 - Fix all the issues you identified — don't just suggest, actually rewrite
-- Improve bullet points with quantified achievements where possible
+- Improve bullet points with quantified achievements ONLY where the original resume provides supporting data
+- NEVER invent metrics, numbers, team sizes, or achievements not present in the original resume. If no number is given, use qualitative improvements or add a placeholder like [X] that the user can fill in.
+- The revised resume must be defensible in an interview — if the candidate cannot back up a claim, do not write it
 - Add missing keywords from the JD naturally (don't keyword-stuff)
 - Keep the same structure/sections but make every line stronger
 - Use standard resume format: Name, Contact, Summary, Experience (reverse-chronological), Education, Skills
@@ -105,6 +127,7 @@ Structure your response in exactly these sections:
 - If the resume is actually strong for the role, say so — don't invent problems.
 - If information is missing (no JD provided, no salary info), work with what you have and note what additional info would help.
 `;
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -126,10 +149,15 @@ export async function analyzeWithGemini(params: {
   yearsExperience?: number;
   age?: number;
   employmentStatus?: string;
+  salaryBenchmarks?: SalaryBenchmark[];
 }): Promise<string> {
   const ai = new GoogleGenAI({ apiKey: params.apiKey });
 
-  const salaryContext = buildSalaryContext(params.field, params.degree, params.expectedSalary);
+  const salaryContext = buildSalaryContext(
+    params.salaryBenchmarks ?? [],
+    params.expectedSalary,
+    params.yearsExperience
+  );
 
   const profile: UserProfile = {
     age: params.age,
@@ -171,19 +199,31 @@ export async function analyzeWithGemini(params: {
 
   userMessage += `\nPlease analyze this resume for the Singapore job market and provide specific, actionable feedback.`;
 
-  const responsePromise = ai.models.generateContent({
-    model: MODEL,
-    contents: userMessage,
-    config: {
-      systemInstruction: SYSTEM_PROMPT,
-      temperature: 0.3,
-      maxOutputTokens: 4000,
-      safetySettings: SAFETY_SETTINGS,
-    },
-  });
+  async function tryModel(model: string) {
+    const responsePromise = ai.models.generateContent({
+      model,
+      contents: userMessage,
+      config: {
+        systemInstruction: getSystemPrompt(),
+        temperature: 0.3,
+        maxOutputTokens: 4000,
+        safetySettings: SAFETY_SETTINGS,
+      },
+    });
+    return withTimeout(responsePromise, GEMINI_TIMEOUT_MS, "Gemini analysis");
+  }
 
-  const response = await withTimeout(responsePromise, GEMINI_TIMEOUT_MS, "Gemini analysis");
-  return response.text || "Unable to generate analysis. Please try again.";
+  try {
+    const response = await tryModel(MODEL);
+    return response.text || "Unable to generate analysis. Please try again.";
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("high demand")) {
+      const response = await tryModel(FALLBACK_MODEL);
+      return response.text || "Unable to generate analysis. Please try again.";
+    }
+    throw err;
+  }
 }
 
 export async function suggestJobTitles(params: {
@@ -317,3 +357,132 @@ ${params.field ? `\nField: ${params.field}` : ""}`;
 
   return null;
 }
+
+const RESUME_STRUCTURED_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING },
+    title: { type: Type.STRING },
+    contact: {
+      type: Type.OBJECT,
+      properties: {
+        phone: { type: Type.STRING },
+        email: { type: Type.STRING },
+        linkedin: { type: Type.STRING },
+        location: { type: Type.STRING },
+      },
+      required: ["phone", "email", "linkedin", "location"],
+    },
+    summary: { type: Type.STRING },
+    experience: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          role: { type: Type.STRING },
+          company: { type: Type.STRING },
+          date: { type: Type.STRING },
+          bullets: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: ["role", "company", "date", "bullets"],
+      },
+    },
+    education: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          institution: { type: Type.STRING },
+          degree: { type: Type.STRING },
+          date: { type: Type.STRING },
+          details: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: ["institution", "degree", "date", "details"],
+      },
+    },
+    skills: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          category: { type: Type.STRING },
+          items: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: ["category", "items"],
+      },
+    },
+    certifications: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          issuer: { type: Type.STRING },
+          date: { type: Type.STRING },
+        },
+        required: ["name", "issuer", "date"],
+      },
+    },
+    languages: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
+    suggested_template: {
+      type: Type.STRING,
+      enum: ["modern", "minimal", "executive"],
+    },
+    accent_color: { type: Type.STRING },
+  },
+  required: [
+    "name", "title", "contact", "summary", "experience",
+    "education", "skills", "certifications", "languages",
+    "suggested_template", "accent_color",
+  ],
+};
+
+export async function generateStructuredResume(params: {
+  apiKey: string;
+  resumeText: string;
+  jobDescription?: string;
+}): Promise<ResumeData | null> {
+  const ai = new GoogleGenAI({ apiKey: params.apiKey });
+
+  const prompt = `You are a professional resume formatter. Convert the resume below into structured JSON. Preserve ALL content exactly — do not rewrite, summarize, or omit any entries. Every job, bullet point, certification, and skill MUST appear in the output.
+
+Rules:
+- Keep all experience entries with all their bullet points
+- Keep all certifications (even if there are many)
+- Keep all skills grouped by category
+- For "suggested_template": pick "modern" for tech/creative/mid-career, "minimal" for clean/junior/simple resumes, "executive" for senior/corporate/finance.
+- For "accent_color": pick a professional hex color appropriate for the industry.
+- For "contact": extract phone, email, LinkedIn URL, and city/country. Use empty string if not found.
+- For "languages": list spoken/written languages. Use empty array if not mentioned.
+
+${params.jobDescription ? `Target job description:\n${params.jobDescription.slice(0, 1500)}\n\n` : ""}Resume to convert:
+${params.resumeText}`;
+
+  try {
+    const responsePromise = ai.models.generateContent({
+      model: MODEL,
+      contents: prompt,
+      config: {
+        temperature: 0.2,
+        maxOutputTokens: 8000,
+        responseMimeType: "application/json",
+        responseSchema: RESUME_STRUCTURED_SCHEMA,
+        safetySettings: SAFETY_SETTINGS,
+      },
+    });
+
+    const response = await withTimeout(responsePromise, 60_000, "Structured resume generation");
+    const text = response.text?.trim();
+    if (!text) return null;
+
+    const parsed = JSON.parse(text) as ResumeData;
+    return parsed;
+  } catch (err) {
+    console.error("Structured resume generation failed:", err);
+    return null;
+  }
+}
+

@@ -1,0 +1,15 @@
+---
+description: Update the changelog after completing a feature or fix
+alwaysApply: false
+---
+
+# Changelog Update Rule
+
+After completing any feature, bugfix, or refactor:
+
+1. Update `CHANGELOG.md` under the `[Unreleased]` section
+2. Use Keep a Changelog categories: Added, Changed, Deprecated, Removed, Fixed, Security
+3. Write entries from the user's perspective, not implementation details
+4. Keep entries to one line each
+5. Do not modify entries under released version headers
+6. If a change spans multiple categories, pick the most relevant one

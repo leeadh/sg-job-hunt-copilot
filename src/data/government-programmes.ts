@@ -40,10 +40,17 @@ export const GOVERNMENT_PROGRAMMES: Programme[] = [
       if (p.citizenship === "foreigner") return { eligible: false, reason: "Only for SC/PR" };
       if ((p.yearsExperience ?? 0) < 2) return { eligible: false, reason: "Need ≥ 2 years work experience" };
       if (p.employmentStatus === "student") return { eligible: false, reason: "Not for students" };
+      const isEnhancedTier = p.citizenship === "citizen" && (p.age ?? 0) >= 40;
       if (isTechRole(p.field, p.jobDescription)) {
-        return { eligible: true, reason: `You have ${p.yearsExperience} years experience and are targeting a tech role — this programme could subsidize your salary while you reskill.` };
+        const tierNote = isEnhancedTier
+          ? "As a Singaporean aged 40+, you qualify for the enhanced tier (up to 90% salary support, capped at $6,000/month)."
+          : "Note: The enhanced 90% salary support tier requires Singapore Citizenship and age 40+. Standard CCP support is still available for SC/PR aged 21+.";
+        return { eligible: true, reason: `You have ${p.yearsExperience} years experience and are targeting a tech role — this programme could subsidize your salary while you reskill. ${tierNote}` };
       }
-      return { eligible: true, reason: "Available across 30+ sectors, not just tech. Check WSG for your sector." };
+      const tierNote = isEnhancedTier
+        ? "As a Singaporean aged 40+, you qualify for the enhanced tier."
+        : "Note: Enhanced 90% salary support requires SC and age 40+.";
+      return { eligible: true, reason: `Available across 30+ sectors, not just tech. Check WSG for your sector. ${tierNote}` };
     },
   },
   {

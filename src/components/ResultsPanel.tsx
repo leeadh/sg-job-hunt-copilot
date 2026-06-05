@@ -31,6 +31,7 @@ interface SalaryInsight {
   percentile: string;
   expectedSalary: number;
   isAboveMedian: boolean;
+  dataSource: string;
   advice: string;
 }
 
@@ -68,6 +69,7 @@ interface AnalysisResult {
   salary: SalaryInsight | null;
   programmes: ProgrammeMatch[];
   llmAnalysis: string | null;
+  structuredResume: Record<string, unknown> | null;
   jobs: JobSearchResult[] | null;
   interviewPrep: string | null;
   linkedIn: LinkedInResult | null;
@@ -81,9 +83,11 @@ function renderMarkdown(text: string) {
     const line = lines[i];
 
     if (line.startsWith("## ")) {
-      elements.push(<h2 key={i} className="mt-5 mb-2 text-lg font-semibold">{line.slice(3)}</h2>);
+      const heading = line.slice(3).replace(/\*\*(.+?)\*\*/g, '$1');
+      elements.push(<h2 key={i} className="mt-5 mb-2 text-lg font-semibold">{heading}</h2>);
     } else if (line.startsWith("### ")) {
-      elements.push(<h3 key={i} className="mt-4 mb-1 text-base font-semibold">{line.slice(4)}</h3>);
+      const heading = line.slice(4).replace(/\*\*(.+?)\*\*/g, '$1');
+      elements.push(<h3 key={i} className="mt-4 mb-1 text-base font-semibold">{heading}</h3>);
     } else if (line.startsWith("- ") || line.startsWith("* ")) {
       const content = line.slice(2);
       elements.push(
@@ -279,7 +283,7 @@ const TABS = [
 type TabId = typeof TABS[number]["id"];
 
 export default function ResultsPanel({ result }: { result: AnalysisResult }) {
-  const { ats, salary, programmes, llmAnalysis, jobs, interviewPrep, linkedIn } = result;
+  const { ats, salary, programmes, llmAnalysis, structuredResume, jobs, interviewPrep, linkedIn } = result;
 
   const availableTabs = TABS.filter(t => {
     if (t.id === "analysis") return !!llmAnalysis;
@@ -352,10 +356,12 @@ export default function ResultsPanel({ result }: { result: AnalysisResult }) {
               </span>
             </div>
             {renderMarkdown(llmAnalysis)}
-            {llmAnalysis.includes("## Revised Resume") && (
-              <div className="mt-5 flex items-center gap-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-                <DownloadResumePDF llmAnalysis={llmAnalysis} />
-                <span className="text-xs text-zinc-400">A4 format, ready to send</span>
+            {(structuredResume || llmAnalysis.includes("## Revised Resume")) && (
+              <div className="mt-5 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+                <DownloadResumePDF
+                  structuredResume={structuredResume as import("@/lib/resume-schema").ResumeData | null}
+                  llmAnalysis={llmAnalysis}
+                />
               </div>
             )}
           </section>
@@ -446,8 +452,13 @@ export default function ResultsPanel({ result }: { result: AnalysisResult }) {
           <div className="space-y-6">
             {salary && (
               <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <h2 className="mb-3 text-lg font-semibold">Salary Benchmark (MOM Data)</h2>
+                <h2 className="mb-3 text-lg font-semibold">Salary Benchmark</h2>
                 <p className="text-sm text-zinc-700 dark:text-zinc-300">{salary.advice}</p>
+                {salary.benchmark.source.includes("GES") && salary.dataSource === "live" && (
+                  <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                    Note: This data is from the Graduate Employment Survey (fresh grads only). For experienced professionals, actual market rates are higher.
+                  </p>
+                )}
                 <div className="mt-4 grid grid-cols-3 gap-4 text-center">
                   <div>
                     <div className="text-xs text-zinc-500">25th %ile</div>

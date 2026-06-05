@@ -11,3 +11,10 @@ alwaysApply: true
 - Never log or return API key values in API responses (even partially).
 - Always validate and sanitize user input before passing to LLM prompts.
 - Always run `filterLLMOutput()` on Gemini responses before returning to client.
+
+## Environment Variable Handling
+
+- **Never** set env vars via interactive CLI commands (`vercel env add`, `heroku config:set`, etc.) — agent terminals are non-interactive and will silently save empty values.
+- Always instruct the user to set env vars via the **platform dashboard** (Vercel dashboard, AWS console, etc.) or via their own interactive terminal.
+- After env vars are changed, always redeploy (`vercel --prod`) to pick up the new values.
+- To verify an env var is set correctly, use a temporary health-check endpoint or `vercel env pull` — never print the key value itself.

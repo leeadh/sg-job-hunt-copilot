@@ -26,7 +26,7 @@ export default function Home() {
         {/* Hero */}
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Stop guessing. <span className="text-blue-600">Know</span> why you&apos;re not getting callbacks.
+            Stop guessing. <span className="text-blue-600">Know</span>{" "}why you&apos;re not getting callbacks.
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base text-zinc-600 dark:text-zinc-400">
             Free resume analysis built for Singapore — ATS keyword matching, salary benchmarks from MOM data,
@@ -59,15 +59,16 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Privacy Notice */}
+        <div className="mb-8 rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-center text-xs text-zinc-600 dark:border-blue-900 dark:bg-blue-950/30 dark:text-zinc-400">
+          <strong>Privacy:</strong> Your PDF is parsed in your browser — never uploaded.
+          Resume text is sent to Google Gemini for AI analysis and immediately discarded.
+          No data is stored, no account required.{" "}
+          <a href="https://github.com" className="underline hover:text-blue-600">Open-source</a> — audit the code yourself.
+        </div>
+
         {/* Analyzer Form */}
         <AnalyzerForm />
-
-        {/* Privacy Notice */}
-        <div className="mt-12 rounded-xl bg-zinc-100 p-4 text-center text-xs text-zinc-500 dark:bg-zinc-900">
-          <strong>Privacy:</strong> Your resume is analyzed in your browser session and API routes only.
-          Nothing is stored, logged, or sent to third parties. No account required.
-          This is an <a href="https://github.com" className="underline">open-source</a> project.
-        </div>
       </main>
 
       {/* Footer */}

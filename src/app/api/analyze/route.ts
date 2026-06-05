@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeResume, extractKeywords } from "@/lib/ats-analyzer";
-import { findSalaryBenchmark, getSalaryPercentile } from "@/data/salary-benchmarks";
+import { getSalaryPercentile } from "@/data/salary-benchmarks";
 import { matchProgrammes, UserProfile } from "@/data/government-programmes";
-import { analyzeWithGemini, suggestJobTitles, generateInterviewPrep, generateLinkedInOptimizer } from "@/lib/gemini";
+import { analyzeWithGemini, suggestJobTitles, generateInterviewPrep, generateLinkedInOptimizer, generateStructuredResume } from "@/lib/gemini";
 import { searchJobs } from "@/lib/job-search";
 import { validateInputs } from "@/lib/sanitize";
 import { filterLLMOutput } from "@/lib/output-filter";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { fetchSalaryWithFallback } from "@/lib/salary-api";
 
 function getClientIP(req: NextRequest): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
@@ -49,20 +50,23 @@ export async function POST(req: NextRequest) {
       ? analyzeResume(resumeText, jobDescription)
       : null;
 
+    const salaryResult = field
+      ? await fetchSalaryWithFallback(field, degree, yearsExperience ? parseInt(yearsExperience) : undefined, age ? parseInt(age) : undefined)
+      : { benchmarks: [], source: "static" as const };
+    const salaryBenchmarks = salaryResult.benchmarks;
+
     let salaryInsight = null;
-    if (expectedSalary && field) {
-      const benchmarks = findSalaryBenchmark(field, degree);
-      if (benchmarks.length > 0) {
-        const benchmark = benchmarks[0];
-        const percentile = getSalaryPercentile(expectedSalary, benchmark);
-        const isAboveMedian = expectedSalary > benchmark.medianSalary;
-        salaryInsight = {
-          benchmark, percentile, expectedSalary, isAboveMedian,
-          advice: isAboveMedian && expectedSalary > benchmark.p75Salary
-            ? `Your expected salary of $${expectedSalary.toLocaleString()} is in the ${percentile} for ${benchmark.field} (${benchmark.degree}). This may reduce callback rates for entry/junior roles. The median is $${benchmark.medianSalary.toLocaleString()}.`
-            : `Your expected salary of $${expectedSalary.toLocaleString()} is in the ${percentile} for ${benchmark.field} (${benchmark.degree}). Median: $${benchmark.medianSalary.toLocaleString()}.`,
-        };
-      }
+    if (expectedSalary && salaryBenchmarks.length > 0) {
+      const benchmark = salaryBenchmarks[0];
+      const percentile = getSalaryPercentile(expectedSalary, benchmark);
+      const isAboveMedian = expectedSalary > benchmark.medianSalary;
+      salaryInsight = {
+        benchmark, percentile, expectedSalary, isAboveMedian,
+        dataSource: salaryResult.source,
+        advice: isAboveMedian && expectedSalary > benchmark.p75Salary
+          ? `Your expected salary of $${expectedSalary.toLocaleString()} is in the ${percentile} for ${benchmark.field} (${benchmark.degree}). This may reduce callback rates for entry/junior roles. The median is $${benchmark.medianSalary.toLocaleString()}.`
+          : `Your expected salary of $${expectedSalary.toLocaleString()} is in the ${percentile} for ${benchmark.field} (${benchmark.degree}). Median: $${benchmark.medianSalary.toLocaleString()}.`,
+      };
     }
 
     const profile: UserProfile = {
@@ -81,6 +85,7 @@ export async function POST(req: NextRequest) {
     let jobResults = null;
     let interviewPrep: string | null = null;
     let linkedIn: { headline: string; summary: string } | null = null;
+    let structuredResume = null;
 
     const resumeKeywords = extractKeywords(resumeText);
     const jdKeywords = jobDescription ? extractKeywords(jobDescription) : [];
@@ -105,6 +110,7 @@ export async function POST(req: NextRequest) {
             yearsExperience: yearsExperience ? parseInt(yearsExperience) : undefined,
             age: age ? parseInt(age) : undefined,
             employmentStatus,
+            salaryBenchmarks,
           }),
           suggestJobTitles({ apiKey: effectiveKey, resumeText, jobDescription, field }),
           generateLinkedInOptimizer({ apiKey: effectiveKey, resumeText, field }),
@@ -122,6 +128,11 @@ export async function POST(req: NextRequest) {
         const suggestedTitles = results[1] as string[];
         linkedIn = results[2] as { headline: string; summary: string } | null;
         interviewPrep = (results[3] as string) || null;
+
+        // Extract the revised resume from the analysis, then convert to structured JSON
+        const revisedMatch = llmAnalysis.match(/## Revised Resume\s*\n([\s\S]*?)(?=\n## (?!.*Resume)|$)/);
+        const revisedText = revisedMatch ? revisedMatch[1].trim() : resumeText;
+        structuredResume = await generateStructuredResume({ apiKey: effectiveKey, resumeText: revisedText, jobDescription });
 
         const searchQueries = suggestedTitles.length > 0
           ? suggestedTitles
@@ -146,7 +157,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { ats: atsResult, salary: salaryInsight, programmes, llmAnalysis, jobs: jobResults, interviewPrep, linkedIn, usingSharedKey },
+      { ats: atsResult, salary: salaryInsight, programmes, llmAnalysis, structuredResume, jobs: jobResults, interviewPrep, linkedIn, usingSharedKey },
       { headers: { "X-RateLimit-Remaining": String(rateCheck.remaining) } }
     );
   } catch {

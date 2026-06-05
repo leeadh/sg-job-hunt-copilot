@@ -11,6 +11,15 @@ if echo "$command" | grep -qiE 'push\s+--force|push\s+-f|reset\s+--hard|rm\s+-rf
   exit 0
 fi
 
+if echo "$command" | grep -qiE 'vercel env add|heroku config:set|aws ssm put-parameter'; then
+  echo '{
+    "permission": "deny",
+    "user_message": "Blocked: interactive env var command. Set env vars via the platform dashboard instead.",
+    "agent_message": "Do NOT set env vars via CLI — agent terminals are non-interactive and will save empty values. Instruct the user to set the value via the Vercel dashboard (or their own terminal)."
+  }'
+  exit 0
+fi
+
 if echo "$command" | grep -qiE 'AQ\.|AIzaSy|GEMINI_API_KEY=\S{10}'; then
   echo '{
     "permission": "ask",
